@@ -222,23 +222,42 @@ textarea{resize:vertical;min-height:80px;}
 <div class="wrap" id="app"></div>
 
 <script>
-// ── INIT ──────────────────────────────────────────────────────
-// Uses google.script.run — the proper Apps Script communication
-// method. No fetch, no CORS, no redirect issues.
+// ═══════════════════════════════════════════════════════════════
+// ARYA SURF CAMP — Board Tracker
+// Hosted on GitHub Pages. Data API: Google Apps Script (doPost)
+//
+// ▼ PASTE YOUR APPS SCRIPT /exec URL HERE ▼
+const API_URL = 'https://script.google.com/macros/s/AKfycbxB_e_G8dZXSS3Qm8B3yFCedPXWojdGCH9INchzAvE/exec';
+// ▲ replace with your own URL if you redeploy ▲
+// ═══════════════════════════════════════════════════════════════
+
 const fmt   = n => 'Rp '+Number(n).toLocaleString('id-ID');
 const fmtDt = d => d ? new Date(d).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
 const fmtT  = d => d ? new Date(d).toLocaleString('en-GB',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'short'}) : '—';
 
 const STATUS_LABEL = {
-  available:'✓ Available',pending_checkout:'⏳ Awaiting Checkout',
-  rented:'🏄 Rented Out',at_spot:'🌊 At Surf Spot',
-  with_guide:'🧑‍🏫 With Guide',back_camp:'⛺ Back at Camp',
-  overdue:'⚠ OVERDUE',maintenance:'🔧 In Repair',returned:'↩ Returned'
+  available:'✓ Available', pending_checkout:'⏳ Awaiting Checkout',
+  rented:'🏄 Rented Out', at_spot:'🌊 At Surf Spot',
+  with_guide:'🧑‍🏫 With Guide', back_camp:'⛺ Back at Camp',
+  overdue:'⚠ OVERDUE', maintenance:'🔧 In Repair', returned:'↩ Returned'
 };
 
-let RAW = {};
-let CFG = {};
+let RAW = {}, CFG = {};
 const app = document.getElementById('app');
+
+// ── API CALL ──────────────────────────────────────────────────
+// fetch() to Apps Script doPost — works from any domain (GitHub Pages)
+// Apps Script redirect is fine here because we're fetching data, not navigating
+async function api(payload) {
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'text/plain' } // text/plain avoids CORS preflight
+  });
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error || 'Server error');
+  return json.data;
+}
 
 function showLoading(msg) {
   app.innerHTML = `
@@ -248,9 +267,6 @@ function showLoading(msg) {
         border-top-color:var(--sea);border-radius:50%;
         animation:spin 0.9s linear infinite"></div>
       <div style="color:var(--sea);font-weight:600;font-size:15px">${msg||'Loading…'}</div>
-      <div id="load-hint" style="font-size:12px;color:var(--muted);display:none">
-        Taking longer than expected…<br>Check your internet connection.
-      </div>
     </div>`;
 }
 
@@ -259,60 +275,27 @@ function showErr(msg) {
     <div style="padding:32px 24px;text-align:center">
       <div style="font-size:40px;margin-bottom:14px">⚠️</div>
       <div style="color:#c0392b;font-weight:700;font-size:16px;margin-bottom:10px">Something went wrong</div>
-      <div style="color:#666;font-size:13px;margin-bottom:20px">${msg}</div>
+      <div style="color:#666;font-size:13px;margin-bottom:20px;line-height:1.6">${msg}</div>
       <button onclick="location.reload()" style="background:var(--sea);color:#fff;
         border:none;border-radius:10px;padding:12px 28px;font-size:14px;
         font-weight:700;cursor:pointer">🔄 Try Again</button>
     </div>`;
 }
 
-window.onload = () => {
+window.onload = async () => {
   const hash = (window.location.hash || '').replace('#','').toUpperCase().trim();
 
   if (!hash)           { renderHome(); return; }
   if (hash === 'SCAN') { renderScanner(); return; }
 
-  // Show loading immediately so user sees something
   showLoading(hash === 'DASHBOARD' ? 'Loading dashboard…' : 'Loading board ' + hash + '…');
 
-  // If google.script.run is not available (e.g. opened outside Apps Script), show clear error
-  if (typeof google === 'undefined' || !google.script || !google.script.run) {
-    setTimeout(() => showErr(
-      'This page must be opened via the Apps Script web app URL.<br>' +
-      'Make sure your URL starts with: <code>script.google.com/macros/s/…/exec</code>'
-    ), 400);
-    return;
-  }
-
-  // Show "taking long" hint after 6 seconds
-  const hint = setTimeout(() => {
-    const el = document.getElementById('load-hint');
-    if (el) el.style.display = 'block';
-  }, 6000);
-
-  // Show hard timeout error after 20 seconds
-  const timeout = setTimeout(() => {
-    clearTimeout(hint);
-    showErr('Request timed out. The Apps Script server did not respond.<br><br>' +
-      'Possible fixes:<br>• Redeploy the web app (New version)<br>' +
-      '• Check that Code.gs and Index.html are both saved<br>' +
-      '• Try opening the URL again in a fresh browser tab');
-  }, 20000);
-
-  const done = () => { clearTimeout(hint); clearTimeout(timeout); };
-
-  if (hash === 'DASHBOARD') {
-    google.script.run
-      .withSuccessHandler(function(data) { done(); renderDashboard(data); })
-      .withFailureHandler(function(err)  { done(); showErr(err.message || String(err)); })
-      .getDashboardData();
-    return;
-  }
-
-  // Board ID
-  google.script.run
-    .withSuccessHandler(function(data) {
-      done();
+  try {
+    if (hash === 'DASHBOARD') {
+      const data = await api({ action: 'getDashboardData' });
+      renderDashboard(data);
+    } else {
+      const data = await api({ action: 'getBoardData', boardId: hash });
       RAW = data; CFG = RAW.config || {};
       const v = RAW.view;
       if      (v === 'rental_form')  renderRentalForm();
@@ -321,9 +304,12 @@ window.onload = () => {
       else if (v === 'maintenance')  renderMaintenance();
       else if (v === 'error')        renderError();
       else                           renderHome();
-    })
-    .withFailureHandler(function(err) { done(); showErr(err.message || String(err)); })
-    .getBoardData(hash);
+    }
+  } catch(err) {
+    showErr('Could not reach the server.<br><br><code style="font-size:11px">' +
+      err.message + '</code><br><br>' +
+      'Check that the API_URL in the HTML matches your Apps Script /exec URL.');
+  }
 };
 
 // ── SHARED BOARD CHIP ─────────────────────────────────────────
@@ -526,17 +512,17 @@ function renderRentalForm() {
     const btn = document.querySelector('.btn-primary');
     btn.disabled = true; btn.textContent = 'Submitting…';
 
-    google.script.run
-      .withSuccessHandler(function() {
+    api({ action:'submitRental', boardId: b.id, name, passport, phone,
+      homeAddr, vacAddr, days,
+      wax: pkg.wax, rashguard: pkg.rashguard, leash: pkg.leash, ding: pkg.ding })
+      .then(() => {
         toast('✅ Rental request submitted! The keeper will prepare your gear.','ok');
         setTimeout(() => location.reload(true), 2200);
       })
-      .withFailureHandler(function(err) {
-        toast('⚠ '+(err.message||err),'err');
+      .catch(err => {
+        toast('⚠ '+err.message,'err');
         btn.disabled = false; btn.textContent = '🏄 Submit Rental Request';
-      })
-      .serverSubmitRental({ boardId: b.id, name, passport, phone, homeAddr, vacAddr, days,
-        wax: pkg.wax, rashguard: pkg.rashguard, leash: pkg.leash, ding: pkg.ding });
+      });
   };
 }
 
@@ -611,20 +597,17 @@ function renderCheckout() {
     const btn = document.querySelector('.btn-orange');
     btn.disabled = true; btn.textContent = 'Processing…';
 
-    google.script.run
-      .withSuccessHandler(function() {
+    api({ action:'confirmCheckout', boardId: b.id, rentalId: b.rentalId,
+      renterName: r ? r.name : '', staff,
+      waxGiven: givenState.wax, rashguardGiven: givenState.rashguard,
+      leashGiven: givenState.leash, dingGiven: givenState.ding })
+      .then(() => {
         toast('✅ Board checked out! Rental is now active.','ok');
         setTimeout(() => location.reload(true), 2000);
       })
-      .withFailureHandler(function(err) {
-        toast('⚠ '+(err.message||err),'err');
+      .catch(err => {
+        toast('⚠ '+err.message,'err');
         btn.disabled = false; btn.textContent = '✅ Confirm — Items Given & Board Released';
-      })
-      .serverConfirmCheckout({
-        boardId: b.id, rentalId: b.rentalId,
-        renterName: r ? r.name : '', staff,
-        waxGiven: givenState.wax, rashguardGiven: givenState.rashguard,
-        leashGiven: givenState.leash, dingGiven: givenState.ding
       });
   };
 }
@@ -838,19 +821,16 @@ function renderActive() {
     const btn = document.querySelector('.btn-sky');
     btn.disabled = true; btn.textContent = 'Saving…';
 
-    google.script.run
-      .withSuccessHandler(function() {
+    api({ action:'updateActivity', boardId: b.id, boardStatus: selAction,
+      location: loc, lat: gpsLat, lng: gpsLng, gpsAccuracy: gpsAcc,
+      day, staff, notes, condition: selCond, renter: b.renter })
+      .then(() => {
         toast('✅ Board location updated!','ok');
         setTimeout(()=>location.reload(true), 1800);
       })
-      .withFailureHandler(function(err) {
-        toast('⚠ '+(err.message||err),'err');
+      .catch(err => {
+        toast('⚠ '+err.message,'err');
         btn.disabled=false; btn.textContent='📍 Update Location & Condition';
-      })
-      .serverUpdateActivity({
-        boardId: b.id, boardStatus: selAction, location: loc,
-        lat: gpsLat, lng: gpsLng, gpsAccuracy: gpsAcc,
-        day, staff, notes, condition: selCond, renter: b.renter
       });
   };
 
@@ -862,18 +842,15 @@ function renderActive() {
     const btn = document.querySelector('.btn-return');
     btn.disabled=true; btn.textContent='Processing…';
 
-    google.script.run
-      .withSuccessHandler(function() {
+    api({ action:'confirmReturn', boardId: b.id, rentalId: b.rentalId,
+      renterName: b.renter, staff, condition: retCond, notes })
+      .then(() => {
         toast('✅ Board returned and rental closed!','ok');
         setTimeout(()=>location.reload(true), 2000);
       })
-      .withFailureHandler(function(err) {
-        toast('⚠ '+(err.message||err),'err');
+      .catch(err => {
+        toast('⚠ '+err.message,'err');
         btn.disabled=false; btn.textContent='✅ Confirm Board Returned';
-      })
-      .serverConfirmReturn({
-        boardId: b.id, rentalId: b.rentalId,
-        renterName: b.renter, staff, condition: retCond, notes
       });
   };
 }
@@ -1073,20 +1050,16 @@ function renderScanner() {
     const staff   = document.getElementById('capture-staff').value.trim();
     if (!boardId) { toast('⚠ Enter the board ID','err'); return; }
     if (!staff)   { toast('⚠ Enter your name','err'); return; }
-    // Save as an activity note (no image stored — just the note)
-    google.script.run
-      .withSuccessHandler(() => {
+    api({ action:'updateActivity', boardId, boardStatus:'rented',
+      location:'', lat:'', lng:'', gpsAccuracy:'', day:'', staff,
+      notes:'📄 Paper form / ID photographed by ' + staff,
+      condition:'good', renter:'' })
+      .then(() => {
         toast('✅ Note saved to Activity Log','ok');
         document.getElementById('save-capture-row').style.display = 'none';
         document.getElementById('capture-preview').style.display = 'none';
       })
-      .withFailureHandler(err => toast('⚠ '+err.message,'err'))
-      .serverUpdateActivity({
-        boardId, boardStatus: 'rented', location: '', lat: '', lng: '',
-        gpsAccuracy: '', day: '', staff,
-        notes: '📄 Paper form / ID photographed by ' + staff,
-        condition: 'good', renter: ''
-      });
+      .catch(err => toast('⚠ '+err.message,'err'));
   };
 }
 
