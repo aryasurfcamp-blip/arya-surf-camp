@@ -283,35 +283,79 @@ function showErr(msg) {
     </div>`;
 }
 
-window.onload = async () => {
+// ── ACCESS PINS — change these to your own numbers ────────────
+const PIN_KEEPER = '1234';  // ← Keeper PIN — edit this on GitHub
+const PIN_OWNER  = '5678';  // ← Owner PIN  — edit this on GitHub
+// ──────────────────────────────────────────────────────────────
+
+// In-memory PIN verification (resets when browser tab is closed)
+let keeperOk = false, ownerOk = false;
+
+function checkPin(label, correct, onPass) {
+  const entered = prompt('🔒 ' + label + ' access\nEnter PIN:');
+  if (entered === null) return; // cancelled
+  if (entered === correct) { onPass(); }
+  else { alert('❌ Wrong PIN. Try again.'); }
+}
+
+async function route() {
   const hash = (window.location.hash || '').replace('#','').toUpperCase().trim();
 
-  if (!hash)           { renderHome(); return; }
-  if (hash === 'SCAN') { renderScanner(); return; }
+  if (!hash) { renderHome(); return; }
 
-  showLoading(hash === 'DASHBOARD' ? 'Loading dashboard…' : 'Loading board ' + hash + '…');
+  if (hash === 'SCAN') {
+    if (keeperOk) { renderScanner(); return; }
+    checkPin('Keeper', PIN_KEEPER, () => { keeperOk = true; renderScanner(); });
+    return;
+  }
 
-  try {
-    if (hash === 'DASHBOARD') {
-      const data = await api({ action: 'getDashboardData' });
-      renderDashboard(data);
+  if (hash === 'DASHBOARD') {
+    if (ownerOk) {
+      showLoading('Loading dashboard…');
+      try {
+        const data = await api({ action: 'getDashboardData' });
+        renderDashboard(data);
+      } catch(err) {
+        showErr('Could not reach the server.<br><br><code style="font-size:11px">' +
+          err.message + '</code>');
+      }
     } else {
-      const data = await api({ action: 'getBoardData', boardId: hash });
-      RAW = data; CFG = RAW.config || {};
-      const v = RAW.view;
-      if      (v === 'rental_form')  renderRentalForm();
-      else if (v === 'checkout')     renderCheckout();
-      else if (v === 'active')       renderActive();
-      else if (v === 'maintenance')  renderMaintenance();
-      else if (v === 'error')        renderError();
-      else                           renderHome();
+      checkPin('Owner', PIN_OWNER, async () => {
+        ownerOk = true;
+        showLoading('Loading dashboard…');
+        try {
+          const data = await api({ action: 'getDashboardData' });
+          renderDashboard(data);
+        } catch(err) {
+          showErr('Could not reach the server.<br><br><code style="font-size:11px">' +
+            err.message + '</code>');
+        }
+      });
     }
+    return;
+  }
+
+  // Board ID
+  showLoading('Loading board ' + hash + '…');
+  try {
+    const data = await api({ action: 'getBoardData', boardId: hash });
+    RAW = data; CFG = RAW.config || {};
+    const v = RAW.view;
+    if      (v === 'rental_form')  renderRentalForm();
+    else if (v === 'checkout')     renderCheckout();
+    else if (v === 'active')       renderActive();
+    else if (v === 'maintenance')  renderMaintenance();
+    else if (v === 'error')        renderError();
+    else                           renderHome();
   } catch(err) {
     showErr('Could not reach the server.<br><br><code style="font-size:11px">' +
       err.message + '</code><br><br>' +
       'Check that the API_URL in the HTML matches your Apps Script /exec URL.');
   }
-};
+}
+
+window.onload = () => route();
+window.addEventListener('hashchange', () => route());
 
 // ── SHARED BOARD CHIP ─────────────────────────────────────────
 function boardChip(b) {
@@ -945,7 +989,14 @@ function renderScanner() {
       <span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:auto">Point camera at board sticker</span>
     </div>
 
-    <div id="qr-reader" style="width:100%;border-radius:12px;overflow:hidden;background:#000;margin-bottom:14px"></div>
+    <div id="qr-start-row" style="text-align:center;padding:16px 0 8px">
+      <button class="btn btn-primary" onclick="startCamera()" style="font-size:15px;padding:14px 32px">
+        📷 Start Camera
+      </button>
+      <div style="font-size:12px;color:var(--muted);margin-top:10px">Tap to activate the QR scanner</div>
+    </div>
+
+    <div id="qr-reader" style="display:none;width:100%;border-radius:12px;overflow:hidden;background:#000;margin-bottom:14px"></div>
     <div id="qr-result" style="display:none;background:#e8f5ec;border-radius:10px;padding:12px 14px;margin-bottom:14px">
       <div style="font-weight:700;color:var(--sea)" id="qr-board-id"></div>
       <div style="font-size:12px;color:#555;margin-top:4px" id="qr-board-info"></div>
@@ -954,7 +1005,7 @@ function renderScanner() {
       </button>
     </div>
 
-    <div style="font-size:12px;color:var(--muted);text-align:center;margin-bottom:14px">
+    <div style="font-size:12px;color:var(--muted);text-align:center;margin:14px 0 10px">
       — or manually enter board ID —
     </div>
     <div style="display:flex;gap:8px">
@@ -1003,33 +1054,38 @@ function renderScanner() {
     </div>
   </div>`;
 
-  // Start QR scanner using html5-qrcode (same lib from JETZ activation)
+  // QR scanner — starts only when user taps the button
   let scannedId = '';
-  const html5Qr = new Html5Qrcode('qr-reader');
-  html5Qr.start(
-    { facingMode: 'environment' },
-    { fps: 10, qrbox: { width: 240, height: 240 } },
-    (decodedText) => {
-      // Extract board ID from URL hash or plain text
-      const match = decodedText.match(/#([A-Z0-9-]+)$/i)
-        || decodedText.match(/board=([A-Z0-9-]+)/i)
-        || [null, decodedText];
-      scannedId = (match[1] || '').toUpperCase().trim();
-      if (!scannedId) return;
+  let html5Qr = null;
 
-      html5Qr.stop();
-      if (navigator.vibrate) navigator.vibrate(60);
+  window.startCamera = function() {
+    document.getElementById('qr-start-row').style.display = 'none';
+    document.getElementById('qr-reader').style.display = 'block';
+    html5Qr = new Html5Qrcode('qr-reader');
+    html5Qr.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 240, height: 240 } },
+      (decodedText) => {
+        const match = decodedText.match(/#([A-Z0-9-]+)$/i)
+          || decodedText.match(/board=([A-Z0-9-]+)/i)
+          || [null, decodedText];
+        scannedId = (match[1] || '').toUpperCase().trim();
+        if (!scannedId) return;
 
-      document.getElementById('qr-result').style.display = 'block';
-      document.getElementById('qr-board-id').textContent = '✅ Scanned: ' + scannedId;
-      document.getElementById('qr-board-info').textContent = 'Tap "Open Board" to proceed';
-      document.getElementById('manual-id').value = scannedId;
-    },
-    () => {}
-  ).catch(err => {
-    document.getElementById('qr-reader').innerHTML =
-      '<div style="padding:20px;text-align:center;color:#fff;font-size:13px">⚠ Camera access denied.<br>Use the manual entry below.</div>';
-  });
+        html5Qr.stop();
+        if (navigator.vibrate) navigator.vibrate(60);
+
+        document.getElementById('qr-result').style.display = 'block';
+        document.getElementById('qr-board-id').textContent = '✅ Scanned: ' + scannedId;
+        document.getElementById('qr-board-info').textContent = 'Tap "Open Board" to proceed';
+        document.getElementById('manual-id').value = scannedId;
+      },
+      () => {}
+    ).catch(() => {
+      document.getElementById('qr-reader').innerHTML =
+        '<div style="padding:20px;text-align:center;color:#fff;font-size:13px">⚠ Camera access denied.<br>Use the manual entry below.</div>';
+    });
+  };
 
   window.goToBoard = function() {
     const id = scannedId || document.getElementById('manual-id').value.trim().toUpperCase();
