@@ -6,6 +6,7 @@
 <title>Arya Surf Camp</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/open-location-code@1.0.4/openlocationcode.min.js"></script>
 <style>
 :root{
   --sea:#1a4a3a; --wave:#2d7a5c; --sand:#f0ede8; --foam:#fafaf8;
@@ -227,7 +228,7 @@ textarea{resize:vertical;min-height:80px;}
 // Hosted on GitHub Pages. Data API: Google Apps Script (doPost)
 //
 // ▼ PASTE YOUR APPS SCRIPT /exec URL HERE ▼
-const API_URL = 'https://script.google.com/macros/s/AKfycbwNKlQf-9_ND75DKeV-6Iitu30hc9CsW-M-OWcgVtFwM2mJMtWa4eR-bx8t97aIwnn6JQ/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbwbaTMe7Tz3kZTnYGK29ZGf8R28wOko9BrcuHLuUxTs5p_d8DtU7xsOw2k3rzDCRWr8_A/exec';
 // ▲ replace with your own URL if you redeploy ▲
 // ═══════════════════════════════════════════════════════════════
 
@@ -362,9 +363,9 @@ function logsHtml(logs) {
            background:#e8f5ec;padding:2px 7px;border-radius:8px">🗺 Map</a>`
       : '';
     const w3wLink = l.w3w
-      ? ` <a href="${l.w3wUrl||'https://what3words.com/'+l.w3w}" target="_blank"
-           style="color:#e11f26;font-size:10px;font-weight:700;text-decoration:none;
-           background:#fde8e8;padding:2px 7px;border-radius:8px">/// ${l.w3w}</a>`
+      ? ` <a href="${l.w3wUrl||'https://maps.google.com/?q='+encodeURIComponent(l.w3w)}" target="_blank"
+           style="color:#1a5276;font-size:10px;font-weight:700;text-decoration:none;
+           background:#e8f4fd;padding:2px 7px;border-radius:8px">📍 ${l.w3w}</a>`
       : '';
     const gpsLine = l.lat
       ? `<div style="font-size:10px;color:var(--muted);font-family:monospace;margin-top:3px">
@@ -764,7 +765,7 @@ function renderActive() {
   };
 
   // GPS state
-  let gpsLat = '', gpsLng = '', gpsAcc = '';
+  let gpsLat = '', gpsLng = '', gpsAcc = '', plusCode = '', plusCodeUrl = '';
 
   window.applyPreset = function(val) {
     if (val) document.getElementById('g-loc').value = val;
@@ -782,9 +783,18 @@ function renderActive() {
         gpsLat = pos.coords.latitude.toFixed(6);
         gpsLng = pos.coords.longitude.toFixed(6);
         gpsAcc = Math.round(pos.coords.accuracy);
+
+        // Calculate Google Plus Code in the browser — no API, no cost
+        try {
+          plusCode    = OpenLocationCode.encode(parseFloat(gpsLat), parseFloat(gpsLng));
+          plusCodeUrl = 'https://maps.google.com/?q=' + encodeURIComponent(plusCode);
+        } catch(e) {
+          plusCode = ''; plusCodeUrl = '';
+        }
+
         setGPS('got',
           '✓ Location captured (±' + gpsAcc + ' m)',
-          gpsLat + ', ' + gpsLng,
+          gpsLat + ', ' + gpsLng + (plusCode ? '  📍 ' + plusCode : ''),
           'got'
         );
         document.getElementById('gps-btn').disabled = false;
@@ -795,7 +805,7 @@ function renderActive() {
                       2:'Position unavailable — try outdoors',3:'Timed out — try again'};
         setGPS('err', msgs[err.code]||'GPS error','','');
         document.getElementById('gps-btn').disabled = false;
-        gpsLat = ''; gpsLng = '';
+        gpsLat = ''; gpsLng = ''; plusCode = ''; plusCodeUrl = '';
       },
       { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
     );
@@ -823,6 +833,7 @@ function renderActive() {
 
     api({ action:'updateActivity', boardId: b.id, boardStatus: selAction,
       location: loc, lat: gpsLat, lng: gpsLng, gpsAccuracy: gpsAcc,
+      w3w: plusCode, w3wUrl: plusCodeUrl,
       day, staff, notes, condition: selCond, renter: b.renter })
       .then(() => {
         toast('✅ Board location updated!','ok');
@@ -1129,7 +1140,7 @@ function renderDashboard(data) {
           style="text-decoration:none;background:${statusBg[b.status]||'#f5f5f5'};
           border:1px solid ${statusColor[b.status]||'#ccc'};border-radius:20px;
           padding:4px 10px;font-size:11px;font-weight:700;color:${statusColor[b.status]||'#333'}">
-          ${b.id} ${b.w3w ? '/// '+b.w3w : '📍'}
+          ${b.id} ${b.w3w ? '📍 '+b.w3w : '📍'}
         </a>`).join('')}
     </div>` : `
     <div style="padding:24px;text-align:center;color:var(--muted);font-size:13px">
@@ -1164,10 +1175,10 @@ function renderDashboard(data) {
           ${b.day?' · Day '+b.day:''}</div>` : ''}
         ${b.w3w ? `
         <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <a href="${b.w3wUrl||'https://what3words.com/'+b.w3w}" target="_blank"
+          <a href="${b.w3wUrl||'https://maps.google.com/?q='+encodeURIComponent(b.w3w)}" target="_blank"
             onclick="event.stopPropagation()"
-            style="background:#fde8e8;color:#e11f26;padding:3px 10px;border-radius:12px;
-            font-size:11px;font-weight:700;text-decoration:none">/// ${b.w3w}</a>
+            style="background:#e8f4fd;color:#1a5276;padding:3px 10px;border-radius:12px;
+            font-size:11px;font-weight:700;text-decoration:none">📍 ${b.w3w}</a>
           <a href="https://maps.google.com/?q=${b.lat},${b.lng}" target="_blank"
             onclick="event.stopPropagation()"
             style="background:#e8f5ec;color:var(--wave);padding:3px 10px;border-radius:12px;
