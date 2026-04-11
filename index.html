@@ -228,7 +228,7 @@ textarea{resize:vertical;min-height:80px;}
 // Hosted on GitHub Pages. Data API: Google Apps Script (doPost)
 //
 // ▼ PASTE YOUR APPS SCRIPT /exec URL HERE ▼
-const API_URL = 'https://script.google.com/macros/s/AKfycbyrXlVODMs5ZGgL2sGbHziezZ8-KVOpuQcvWSTwsgGEZvr_4WKCUs0bSwa6eqY9og53QQ/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbwbaTMe7Tz3kZTnYGK29ZGf8R28wOko9BrcuHLuUxTs5p_d8DtU7xsOw2k3rzDCRWr8_A/exec';
 // ▲ replace with your own URL if you redeploy ▲
 // ═══════════════════════════════════════════════════════════════
 
@@ -524,8 +524,8 @@ function renderRentalForm() {
   function recalc() {
     const days = parseInt(document.getElementById('f-days').value)||1;
     const bc = days >= 5
-      ? (Math.floor(days/5)*300000 + (days%5)*75000)
-      : days * 75000;
+      ? (Math.floor(days/5)*300000 + (days%5)*150000)
+      : days * 150000;
     document.getElementById('c-board').textContent = 'Rp '+bc.toLocaleString('id-ID')+' ('+days+' day'+(days>1?'s':'')+')';
     const wax = pkg.wax ? 100000 : 0;
     document.getElementById('c-wax-row').style.display = pkg.wax ? '' : 'none';
