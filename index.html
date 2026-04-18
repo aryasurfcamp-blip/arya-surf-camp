@@ -49,7 +49,15 @@ body{font-family:'DM Sans',sans-serif;background:var(--sand);min-height:100vh;co
 .board-sub{color:rgba(255,255,255,.75);font-size:12px;margin-top:2px;}
 .status-pill{background:rgba(255,255,255,.2);padding:5px 13px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;}
 
-.chip-body{background:#fff;padding:16px 18px;}
+.chip-body{background:#f7f4f0;padding:16px 18px;}
+.chip-head.available   + .chip-body {background:#edf7f1;}
+.chip-head.pending     + .chip-body {background:#fef3e7;}
+.chip-head.rented      + .chip-body {background:#fefbe7;}
+.chip-head.at_spot     + .chip-body {background:#e8f4fd;}
+.chip-head.with_guide  + .chip-body {background:#e8eef6;}
+.chip-head.back_camp   + .chip-body {background:#e8f5f2;}
+.chip-head.overdue     + .chip-body {background:#fde8e8;}
+.chip-head.maintenance + .chip-body {background:#f5eef8;}
 
 /* ── INFO ROWS ── */
 .info-row{display:flex;justify-content:space-between;align-items:center;
